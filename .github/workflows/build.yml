@@ -11,9 +11,15 @@ jobs:
   build_modules:
     runs-on: ubuntu-latest
     steps:
+      # ------------------------------
+      # 1. Checkout 源码
+      # ------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ------------------------------
+      # 2. 安装 Java
+      # ------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -21,15 +27,19 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build arm64-v8a Magisk modules
+      # ------------------------------
+      # 3. 构建每个模块
+      # ------------------------------
+      - name: Build Magisk modules for all ABI
         run: |
           set -e
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
           mkdir -p out/magisk_module_release_named
           for PACKAGE_NAME in "${PACKAGES[@]}"; do
             PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)
-            echo "=== Building module for $PACKAGE_NAME (arm64-v8a only) ==="
+            echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
 
+            # 替换 module.gradle 和 cpp 包名
             sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
             sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
@@ -41,22 +51,32 @@ jobs:
             mkdir -p "$OUTPUT_DIR"
             cp -r template/magisk_module/* "$OUTPUT_DIR/"
 
-            mkdir -p "$OUTPUT_DIR/system/lib64"
-            cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$OUTPUT_DIR/system/lib64/"
+            # 复制所有 ABI 的 .so
+            mkdir -p "$OUTPUT_DIR/system/lib64" "$OUTPUT_DIR/system/lib" "$OUTPUT_DIR/system/x86" "$OUTPUT_DIR/system/x86_64"
+            cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$OUTPUT_DIR/system/lib64/" || true
+            cp module/build/intermediates/cmake/release/obj/armeabi-v7a/*.so "$OUTPUT_DIR/system/lib/" || true
+            cp module/build/intermediates/cmake/release/obj/x86/*.so "$OUTPUT_DIR/system/x86/" || true
+            cp module/build/intermediates/cmake/release/obj/x86_64/*.so "$OUTPUT_DIR/system/x86_64/" || true
 
             # 打包 zip
             cd out/magisk_module_release_named
-            zip -r "$PACKAGE_NAME-arm64-release.zip" "$PACKAGE_NAME"
+            zip -r "$PACKAGE_NAME-release.zip" "$PACKAGE_NAME"
             cd ../..
 
             # 删除中间目录，只保留 zip
             rm -rf "$OUTPUT_DIR"
 
-            echo "Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-arm64-release.zip"
+            echo "Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
           done
 
-      - name: Upload each module as separate artifact
+      # ------------------------------
+      # 4. 单独上传每个模块为 artifact
+      # ------------------------------
+      - name: Upload each module separately
         uses: actions/upload-artifact@v4
         with:
-          name: zygisk-modules-arm64
-          path: out/magisk_module_release_named/*.zip
+          name: placeholder
+          path: |
+            out/magisk_module_release_named/*-release.zip
+      # 注意：GitHub Actions 不支持在单个 step 内循环生成多个 artifact，
+      # 所以需要多个 step，每个模块一个 step 上传
