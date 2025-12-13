@@ -11,15 +11,9 @@ jobs:
   build_modules:
     runs-on: ubuntu-latest
     steps:
-      # ------------------------------
-      # 1. Checkout 源码
-      # ------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ------------------------------
-      # 2. 安装 Java
-      # ------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -27,24 +21,18 @@ jobs:
           java-version: 11
           cache: gradle
 
-      # ------------------------------
-      # 3. 编译模块并打包 zip
-      # ------------------------------
       - name: Build arm64-v8a Magisk modules
         run: |
           set -e
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
+          mkdir -p out/magisk_module_release_named
           for PACKAGE_NAME in "${PACKAGES[@]}"; do
-            PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)  # 去掉空格
+            PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)
             echo "=== Building module for $PACKAGE_NAME (arm64-v8a only) ==="
 
-            # 替换 module.gradle 描述
             sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
-
-            # 替换 cpp 中包名
             sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
-            # 编译 release
             chmod +x ./gradlew
             ./gradlew :module:assembleRelease
 
@@ -53,28 +41,22 @@ jobs:
             mkdir -p "$OUTPUT_DIR"
             cp -r template/magisk_module/* "$OUTPUT_DIR/"
 
-            # 只保留 arm64-v8a 的 .so 文件
             mkdir -p "$OUTPUT_DIR/system/lib64"
             cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$OUTPUT_DIR/system/lib64/"
 
-            # 打包成 zip
+            # 打包 zip
             cd out/magisk_module_release_named
             zip -r "$PACKAGE_NAME-arm64-release.zip" "$PACKAGE_NAME"
             cd ../..
 
-            # 清理中间目录，只保留 zip
+            # 删除中间目录，只保留 zip
             rm -rf "$OUTPUT_DIR"
 
             echo "Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-arm64-release.zip"
           done
 
-      # ------------------------------
-      # 4. 单独上传每个模块为 artifact
-      # ------------------------------
       - name: Upload each module as separate artifact
-        run: |
-          for ZIP_FILE in out/magisk_module_release_named/*-arm64-release.zip; do
-            PACKAGE=$(basename "$ZIP_FILE" -arm64-release.zip)
-            echo "Uploading artifact for $PACKAGE"
-            gh workflow run upload-artifact --artifact-name "zygisk-${PACKAGE}-arm64" --path "$ZIP_FILE" || true
-          done
+        uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-modules-arm64
+          path: out/magisk_module_release_named/*.zip
