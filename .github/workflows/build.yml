@@ -1,4 +1,4 @@
-name: Build
+name: Build Zygisk-Il2CppDumper
 
 on:
   workflow_dispatch:
@@ -32,16 +32,19 @@ jobs:
           # 编译 release
           ./gradlew :module:assembleRelease
 
-      - name: Prepare artifact
+      - name: Prepare artifact directory
         run: |
-          mkdir -p out/magisk_module_release_named
-          cp -r out/magisk_module_release/* out/magisk_module_release_named/${{ github.event.inputs.package_name }}-arm64-release/
+          # 定义输出目录，以包名命名
+          PACKAGE_DIR=out/magisk_module_release_named/${{ github.event.inputs.package_name }}
+          mkdir -p "$PACKAGE_DIR"
+          # 拷贝 Gradle 输出到这个目录
+          cp -r module/build/outputs/* "$PACKAGE_DIR/"
 
-      - name: Upload Magisk module
+      - name: Upload artifact for download
         uses: actions/upload-artifact@v4
         with:
           name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
-          path: out/magisk_module_release_named/
+          path: out/magisk_module_release_named/${{ github.event.inputs.package_name }}/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -51,9 +54,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload release artifact
+      - name: Upload release files
         uses: softprops/action-gh-release@v1
         with:
-          files: out/magisk_module_release_named/${{ github.event.inputs.package_name }}-arm64-release/**
+          files: out/magisk_module_release_named/${{ github.event.inputs.package_name }}/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
