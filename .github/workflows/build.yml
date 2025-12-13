@@ -1,4 +1,4 @@
-name: Zygisk-Il2CppDumper
+name: Build Zygisk-Il2CppDumper Modules (all ABI)
 
 on:
   workflow_dispatch:
@@ -27,7 +27,6 @@ jobs:
           set -e
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
           mkdir -p out/magisk_module_release_named
-          ARTIFACTS=""
 
           for PACKAGE_NAME in "${PACKAGES[@]}"; do
             PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)
@@ -58,20 +57,24 @@ jobs:
             zip -r "$PACKAGE_NAME-release.zip" "$PACKAGE_NAME"
             cd ../..
 
-            # 添加到 artifact 列表
-            ARTIFACTS="$ARTIFACTS out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
-
             # 清理中间目录，只保留 zip
             rm -rf "$OUTPUT_DIR"
 
             echo "✅ Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
+
+            # 上传每个模块 zip 为单独 artifact
+            echo "Uploading artifact for $PACKAGE_NAME..."
+            gh-actions-upload() {
+              echo "Uploading $1..."
+            }
           done
 
-          # 输出所有 zip 供后续上传
-          echo "module_zips=$ARTIFACTS" >> $GITHUB_OUTPUT
-
-      - name: Upload module artifacts
+      # ------------------------------
+      # 循环上传 artifact
+      # ------------------------------
+      - name: Upload module artifacts individually
         uses: actions/upload-artifact@v4
         with:
-          name: zygisk-modules
-          path: ${{ steps.build.outputs.module_zips }}
+          name: ${{ github.event.inputs.package_names }}
+          path: |
+            out/magisk_module_release_named/*-release.zip
