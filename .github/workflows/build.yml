@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 必须拉完整历史，否则无法 push tag
 
       - name: Setup Java
         uses: actions/setup-java@v4
