@@ -1,4 +1,4 @@
-name: Build Zygisk-Il2CppDumper Module (all ABI)
+name: Zygisk-Il2CppDumper
 
 on:
   workflow_dispatch:
