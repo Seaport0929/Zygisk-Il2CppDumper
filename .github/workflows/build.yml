@@ -1,4 +1,4 @@
-name: Zygisk-Il2CppDumper
+name: Build Zygisk-Il2CppDumper Module (all ABI)
 
 on:
   workflow_dispatch:
@@ -11,11 +11,9 @@ jobs:
   build_module:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout 源码
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安装 Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -23,7 +21,6 @@ jobs:
           java-version: 11
           cache: gradle
 
-      # 3. 构建 Magisk 模块
       - name: Build Magisk module (all ABI)
         run: |
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
@@ -33,19 +30,18 @@ jobs:
           sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
           sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
-          # 运行 gradle 构建 release
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
 
-          # Gradle 构建完成后的模块 zip 路径
-          MODULE_ZIP="module/build/outputs/magisk_module_release/zipRelease/module-release.zip"
+          # 查找最新生成的模块 zip 文件
+          MODULE_ZIP=$(find module/build/outputs/magisk_module_release -name "*.zip" | sort | tail -n 1)
+          echo "Found module zip: $MODULE_ZIP"
+
           FINAL_ZIP="out/${PACKAGE_NAME}.zip"
           mkdir -p out
           cp "$MODULE_ZIP" "$FINAL_ZIP"
-
           echo "Module zip ready: $FINAL_ZIP"
 
-      # 4. 上传 artifact，文件名直接是包名
       - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
