@@ -21,7 +21,7 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build Magisk module
+      - name: Build Magisk module (no zip)
         run: |
           set -e
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
@@ -47,15 +47,10 @@ jobs:
           cp module/build/intermediates/cmake/release/obj/x86/*.so "$MODULE_DIR/system/x86/" || true
           cp module/build/intermediates/cmake/release/obj/x86_64/*.so "$MODULE_DIR/system/x86_64/" || true
 
-          # 打包 zip（zip 内直接是模块文件）
-          cd "$MODULE_DIR"
-          zip -r "../$PACKAGE_NAME-release.zip" ./*
-          cd ../..
+          echo "Module directory ready: $MODULE_DIR"
 
-          echo "Module zip created: out/$PACKAGE_NAME-release.zip"
-
-      - name: Upload module artifact
+      - name: Upload module directory as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zygisk-${{ github.event.inputs.package_name }}-release
-          path: out/${{ github.event.inputs.package_name }}-release.zip
+          name: zygisk-${{ github.event.inputs.package_name }}-module
+          path: out/magisk_module_release/
