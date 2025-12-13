@@ -1,14 +1,14 @@
-name: Build Zygisk-Il2CppDumper Modules (all ABI)
+name: Zygisk-Il2CppDumper
 
 on:
   workflow_dispatch:
     inputs:
-      package_names:
-        description: "Comma-separated package names, e.g. com.game.one,com.game.two"
+      package_name:
+        description: "Package name of the game, e.g. com.game.one"
         required: true
 
 jobs:
-  build_modules:
+  build_module:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,60 +21,41 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build Magisk modules for all ABI
-        id: build
+      - name: Build Magisk module
         run: |
           set -e
-          IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
-          mkdir -p out/magisk_module_release_named
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
 
-          for PACKAGE_NAME in "${PACKAGES[@]}"; do
-            PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)
-            echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
+          # 替换 module.gradle 和 cpp 包名
+          sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
+          sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
-            # 替换 module.gradle 和 cpp 包名
-            sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
-            sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
+          chmod +x ./gradlew
+          ./gradlew :module:assembleRelease
 
-            chmod +x ./gradlew
-            ./gradlew :module:assembleRelease
+          # 准备 Magisk 模块目录
+          MODULE_DIR="out/magisk_module_release"
+          rm -rf "$MODULE_DIR"
+          mkdir -p "$MODULE_DIR"
+          cp -r template/magisk_module/* "$MODULE_DIR/"
 
-            # 准备 Magisk 模块目录
-            OUTPUT_DIR="out/magisk_module_release_named/$PACKAGE_NAME"
-            mkdir -p "$OUTPUT_DIR"
-            cp -r template/magisk_module/* "$OUTPUT_DIR/"
+          # 复制所有 ABI 的 .so
+          mkdir -p "$MODULE_DIR/system/lib64" "$MODULE_DIR/system/lib" "$MODULE_DIR/system/x86" "$MODULE_DIR/system/x86_64"
+          cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$MODULE_DIR/system/lib64/" || true
+          cp module/build/intermediates/cmake/release/obj/armeabi-v7a/*.so "$MODULE_DIR/system/lib/" || true
+          cp module/build/intermediates/cmake/release/obj/x86/*.so "$MODULE_DIR/system/x86/" || true
+          cp module/build/intermediates/cmake/release/obj/x86_64/*.so "$MODULE_DIR/system/x86_64/" || true
 
-            # 复制所有 ABI 的 .so 文件
-            declare -A ABI_PATHS=( ["arm64-v8a"]="lib64" ["armeabi-v7a"]="lib" ["x86"]="x86" ["x86_64"]="x86_64" )
-            for ABI in "${!ABI_PATHS[@]}"; do
-              DEST_DIR="$OUTPUT_DIR/system/${ABI_PATHS[$ABI]}"
-              mkdir -p "$DEST_DIR"
-              find module/build/intermediates/cmake -path "*/obj/$ABI/*.so" -exec cp {} "$DEST_DIR/" \; || true
-            done
+          # 打包 zip（zip 内直接是模块文件）
+          cd "$MODULE_DIR"
+          zip -r "../$PACKAGE_NAME-release.zip" ./*
+          cd ../..
 
-            # 打包模块 zip（zip 内直接是模块文件夹）
-            cd out/magisk_module_release_named
-            zip -r "$PACKAGE_NAME-release.zip" "$PACKAGE_NAME"
-            cd ../..
+          echo "Module zip created: out/$PACKAGE_NAME-release.zip"
 
-            # 清理中间目录，只保留 zip
-            rm -rf "$OUTPUT_DIR"
-
-            echo "✅ Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
-
-            # 上传每个模块 zip 为单独 artifact
-            echo "Uploading artifact for $PACKAGE_NAME..."
-            gh-actions-upload() {
-              echo "Uploading $1..."
-            }
-          done
-
-      # ------------------------------
-      # 循环上传 artifact
-      # ------------------------------
-      - name: Upload module artifacts individually
+      - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.package_names }}
-          path: |
-            out/magisk_module_release_named/*-release.zip
+          name: zygisk-${{ github.event.inputs.package_name }}-release
+          path: out/${{ github.event.inputs.package_name }}-release.zip
