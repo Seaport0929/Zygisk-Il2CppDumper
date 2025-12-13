@@ -37,19 +37,17 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
 
-          # Gradle 构建完成后生成的模块 zip 文件路径
-          MODULE_ZIP="module/build/outputs/magisk_module_release/module-release.zip"
-
-          # 重命名模块 zip 为包名
-          FINAL_ZIP="out/${PACKAGE_NAME}-release.zip"
+          # Gradle 构建完成后的模块 zip 路径
+          MODULE_ZIP="module/build/outputs/magisk_module_release/zipRelease/module-release.zip"
+          FINAL_ZIP="out/${PACKAGE_NAME}.zip"
           mkdir -p out
           cp "$MODULE_ZIP" "$FINAL_ZIP"
 
           echo "Module zip ready: $FINAL_ZIP"
 
-      # 4. 上传模块 zip 为 artifact
+      # 4. 上传 artifact，文件名直接是包名
       - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zygisk-${{ github.event.inputs.package_name }}-release
-          path: out/${{ github.event.inputs.package_name }}-release.zip
+          name: ${{ github.event.inputs.package_name }}
+          path: out/${{ github.event.inputs.package_name }}.zip
