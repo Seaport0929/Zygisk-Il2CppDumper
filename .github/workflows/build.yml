@@ -1,4 +1,4 @@
-name: Build Zygisk-Il2CppDumper Modules
+name: Build Zygisk-Il2CppDumper Modules (arm64-v8a only)
 
 on:
   workflow_dispatch:
@@ -21,12 +21,12 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build Magisk modules
+      - name: Build arm64-v8a Magisk modules
         run: |
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
           for PACKAGE_NAME in "${PACKAGES[@]}"; do
             PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)  # 去掉空格
-            echo "Building module for $PACKAGE_NAME"
+            echo "Building module for $PACKAGE_NAME (arm64-v8a only)"
 
             # 替换 module.gradle 和 cpp 中的包名
             sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
@@ -41,15 +41,15 @@ jobs:
             mkdir -p "$OUTPUT_DIR"
             cp -r template/magisk_module/* "$OUTPUT_DIR/"
 
-            # 复制编译生成的 .so 文件
+            # 只保留 arm64-v8a 的 .so
             mkdir -p "$OUTPUT_DIR/system/lib64"
-            cp module/build/intermediates/so/*.so "$OUTPUT_DIR/system/lib64/"
+            cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$OUTPUT_DIR/system/lib64/"
 
-            # 打包成 zip
+            # 打包 zip
             ZIP_FILE="out/magisk_module_release_named/$PACKAGE_NAME-arm64-release.zip"
             cd out/magisk_module_release_named
             zip -r "$(basename $ZIP_FILE)" "$PACKAGE_NAME"
             cd ../..
-            
+
             echo "Module zip created: $ZIP_FILE"
           done
