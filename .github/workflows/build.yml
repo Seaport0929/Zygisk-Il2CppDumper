@@ -1,4 +1,4 @@
-name: Build Zygisk-Il2CppDumper Modules
+name: Zygisk-Il2CppDumper Modules
 
 on:
   workflow_dispatch:
@@ -69,10 +69,12 @@ jobs:
           done
 
       # ------------------------------
-      # 4. 上传 artifact
+      # 4. 单独上传每个模块为 artifact
       # ------------------------------
-      - name: Upload built Magisk modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: zygisk-modules-arm64
-          path: out/magisk_module_release_named/*.zip
+      - name: Upload each module as separate artifact
+        run: |
+          for ZIP_FILE in out/magisk_module_release_named/*-arm64-release.zip; do
+            PACKAGE=$(basename "$ZIP_FILE" -arm64-release.zip)
+            echo "Uploading artifact for $PACKAGE"
+            gh workflow run upload-artifact --artifact-name "zygisk-${PACKAGE}-arm64" --path "$ZIP_FILE" || true
+          done
