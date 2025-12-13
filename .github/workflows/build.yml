@@ -33,14 +33,18 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
 
-          # 查找最新生成的模块 zip 文件
-          MODULE_ZIP=$(find module/build/outputs/magisk_module_release -name "*.zip" | sort | tail -n 1)
+          # 使用 find 自动查找最终模块 zip
+          MODULE_ZIP=$(find module/build -name "*module-release.zip" | head -n 1)
+          if [ -z "$MODULE_ZIP" ]; then
+            echo "❌ Error: Module zip not found!"
+            exit 1
+          fi
           echo "Found module zip: $MODULE_ZIP"
 
           FINAL_ZIP="out/${PACKAGE_NAME}.zip"
           mkdir -p out
           cp "$MODULE_ZIP" "$FINAL_ZIP"
-          echo "Module zip ready: $FINAL_ZIP"
+          echo "✅ Module zip ready: $FINAL_ZIP"
 
       - name: Upload module artifact
         uses: actions/upload-artifact@v4
