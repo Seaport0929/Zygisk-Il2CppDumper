@@ -1,22 +1,18 @@
-name: Build Zygisk-Il2CppDumper
+name: Build Zygisk-Il2CppDumper Modules
 
 on:
   workflow_dispatch:
     inputs:
-      package_name:
-        description: "Package name of the game:"
+      package_names:
+        description: "Comma-separated package names, e.g. com.game.one,com.game.two"
         required: true
 
 jobs:
-  build:
+  build_modules:
     runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ steps.create_tag.outputs.tag_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 必须拉完整历史，才能创建并 push tag
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -25,63 +21,35 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build module
+      - name: Build Magisk modules
         run: |
-          chmod +x ./gradlew
-          # 替换 module.gradle 描述
-          sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-          # 替换 cpp 中包名
-          sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
-          # 编译 release
-          ./gradlew :module:assembleRelease
+          IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
+          for PACKAGE_NAME in "${PACKAGES[@]}"; do
+            PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)  # 去掉空格
+            echo "Building module for $PACKAGE_NAME"
 
-      - name: Prepare artifact directory
-        run: |
-          PACKAGE_DIR=out/magisk_module_release_named/${{ github.event.inputs.package_name }}
-          mkdir -p "$PACKAGE_DIR"
-          cp -r module/build/outputs/* "$PACKAGE_DIR/"
+            # 替换 module.gradle 和 cpp 中的包名
+            sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
+            sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
-          path: out/magisk_module_release_named/${{ github.event.inputs.package_name }}/
+            # 编译 release
+            chmod +x ./gradlew
+            ./gradlew :module:assembleRelease
 
-      - name: Create tag
-        id: create_tag
-        run: |
-          TAG_NAME="build-${{ github.run_id }}"
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag "$TAG_NAME"
-          git push origin "$TAG_NAME"
-          echo "::set-output name=tag_name::$TAG_NAME"
+            # 准备 Magisk 模块目录
+            OUTPUT_DIR="out/magisk_module_release_named/$PACKAGE_NAME"
+            mkdir -p "$OUTPUT_DIR"
+            cp -r template/magisk_module/* "$OUTPUT_DIR/"
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+            # 复制编译生成的 .so 文件
+            mkdir -p "$OUTPUT_DIR/system/lib64"
+            cp module/build/intermediates/so/*.so "$OUTPUT_DIR/system/lib64/"
 
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.build.outputs.tag_name }}
-          name: "Zygisk-Il2CppDumper-${{ github.event.inputs.package_name }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release files
-        uses: softprops/action-gh-release@v1
-        with:
-          files: out/magisk_module_release_named/${{ github.event.inputs.package_name }}/**
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # 打包成 zip
+            ZIP_FILE="out/magisk_module_release_named/$PACKAGE_NAME-arm64-release.zip"
+            cd out/magisk_module_release_named
+            zip -r "$(basename $ZIP_FILE)" "$PACKAGE_NAME"
+            cd ../..
+            
+            echo "Module zip created: $ZIP_FILE"
+          done
