@@ -11,9 +11,11 @@ jobs:
   build_module:
     runs-on: ubuntu-latest
     steps:
+      # 1. Checkout 源码
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. 安装 Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -21,42 +23,33 @@ jobs:
           java-version: 11
           cache: gradle
 
+      # 3. 构建 Magisk 模块
       - name: Build Magisk module (all ABI)
         run: |
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
           echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
 
-          # 替换 module.gradle 和 cpp 包名
+          # 替换 module.gradle 描述和 cpp 包名
           sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
           sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
+          # 运行 gradle 构建 release
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
 
-          # 准备 Magisk 模块目录
-          OUTPUT_DIR="out/magisk_module_release_named/$PACKAGE_NAME"
-          mkdir -p "$OUTPUT_DIR"
-          cp -r template/magisk_module/* "$OUTPUT_DIR/"
+          # Gradle 构建完成后生成的模块 zip 文件路径
+          MODULE_ZIP="module/build/outputs/magisk_module_release/module-release.zip"
 
-          # 复制所有 ABI 的 .so
-          mkdir -p "$OUTPUT_DIR/system/lib64" "$OUTPUT_DIR/system/lib" "$OUTPUT_DIR/system/x86" "$OUTPUT_DIR/system/x86_64"
-          cp module/build/intermediates/cmake/release/obj/arm64-v8a/*.so "$OUTPUT_DIR/system/lib64/" || true
-          cp module/build/intermediates/cmake/release/obj/armeabi-v7a/*.so "$OUTPUT_DIR/system/lib/" || true
-          cp module/build/intermediates/cmake/release/obj/x86/*.so "$OUTPUT_DIR/system/x86/" || true
-          cp module/build/intermediates/cmake/release/obj/x86_64/*.so "$OUTPUT_DIR/system/x86_64/" || true
+          # 重命名模块 zip 为包名
+          FINAL_ZIP="out/${PACKAGE_NAME}-release.zip"
+          mkdir -p out
+          cp "$MODULE_ZIP" "$FINAL_ZIP"
 
-          # 打包 zip
-          cd out/magisk_module_release_named
-          zip -r "$PACKAGE_NAME-release.zip" "$PACKAGE_NAME"
-          cd ../..
+          echo "Module zip ready: $FINAL_ZIP"
 
-          # 删除中间目录，只保留 zip
-          rm -rf "$OUTPUT_DIR"
-
-          echo "Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
-
+      # 4. 上传模块 zip 为 artifact
       - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
           name: zygisk-${{ github.event.inputs.package_name }}-release
-          path: out/magisk_module_release_named/${{ github.event.inputs.package_name }}-release.zip
+          path: out/${{ github.event.inputs.package_name }}-release.zip
