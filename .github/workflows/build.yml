@@ -3,12 +3,12 @@ name: Zygisk-Il2CppDumper
 on:
   workflow_dispatch:
     inputs:
-      package_name:
-        description: "Package name of the game, e.g. com.game.one"
+      package_names:
+        description: "Comma-separated package names, e.g. com.game.one,com.game.two"
         required: true
 
 jobs:
-  build_module:
+  build_modules:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,33 +21,57 @@ jobs:
           java-version: 11
           cache: gradle
 
-      - name: Build Magisk module (all ABI)
+      - name: Build Magisk modules for all ABI
+        id: build
         run: |
-          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
-          echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
+          set -e
+          IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.package_names }}"
+          mkdir -p out/magisk_module_release_named
+          ARTIFACTS=""
 
-          # 替换 module.gradle 描述和 cpp 包名
-          sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
-          sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
+          for PACKAGE_NAME in "${PACKAGES[@]}"; do
+            PACKAGE_NAME=$(echo "$PACKAGE_NAME" | xargs)
+            echo "=== Building module for $PACKAGE_NAME (all ABI) ==="
 
-          chmod +x ./gradlew
-          ./gradlew :module:assembleRelease
+            # 替换 module.gradle 和 cpp 包名
+            sed -i "s/moduleDescription = \".*/moduleDescription = \"$PACKAGE_NAME\"/" module.gradle
+            sed -i "s/com.game.packagename/$PACKAGE_NAME/" module/src/main/cpp/game.h
 
-          # 使用 find 自动查找最终模块 zip
-          MODULE_ZIP=$(find module/build -name "*module-release.zip" | head -n 1)
-          if [ -z "$MODULE_ZIP" ]; then
-            echo "❌ Error: Module zip not found!"
-            exit 1
-          fi
-          echo "Found module zip: $MODULE_ZIP"
+            chmod +x ./gradlew
+            ./gradlew :module:assembleRelease
 
-          FINAL_ZIP="out/${PACKAGE_NAME}.zip"
-          mkdir -p out
-          cp "$MODULE_ZIP" "$FINAL_ZIP"
-          echo "✅ Module zip ready: $FINAL_ZIP"
+            # 准备 Magisk 模块目录
+            OUTPUT_DIR="out/magisk_module_release_named/$PACKAGE_NAME"
+            mkdir -p "$OUTPUT_DIR"
+            cp -r template/magisk_module/* "$OUTPUT_DIR/"
 
-      - name: Upload module artifact
+            # 复制所有 ABI 的 .so 文件
+            declare -A ABI_PATHS=( ["arm64-v8a"]="lib64" ["armeabi-v7a"]="lib" ["x86"]="x86" ["x86_64"]="x86_64" )
+            for ABI in "${!ABI_PATHS[@]}"; do
+              DEST_DIR="$OUTPUT_DIR/system/${ABI_PATHS[$ABI]}"
+              mkdir -p "$DEST_DIR"
+              find module/build/intermediates/cmake -path "*/obj/$ABI/*.so" -exec cp {} "$DEST_DIR/" \; || true
+            done
+
+            # 打包模块 zip（zip 内直接是模块文件夹）
+            cd out/magisk_module_release_named
+            zip -r "$PACKAGE_NAME-release.zip" "$PACKAGE_NAME"
+            cd ../..
+
+            # 添加到 artifact 列表
+            ARTIFACTS="$ARTIFACTS out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
+
+            # 清理中间目录，只保留 zip
+            rm -rf "$OUTPUT_DIR"
+
+            echo "✅ Module zip created: out/magisk_module_release_named/$PACKAGE_NAME-release.zip"
+          done
+
+          # 输出所有 zip 供后续上传
+          echo "module_zips=$ARTIFACTS" >> $GITHUB_OUTPUT
+
+      - name: Upload module artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.package_name }}
-          path: out/${{ github.event.inputs.package_name }}.zip
+          name: zygisk-modules
+          path: ${{ steps.build.outputs.module_zips }}
