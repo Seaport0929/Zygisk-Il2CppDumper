@@ -34,10 +34,8 @@ jobs:
 
       - name: Prepare artifact directory
         run: |
-          # 定义输出目录，以包名命名
           PACKAGE_DIR=out/magisk_module_release_named/${{ github.event.inputs.package_name }}
           mkdir -p "$PACKAGE_DIR"
-          # 拷贝 Gradle 输出到这个目录
           cp -r module/build/outputs/* "$PACKAGE_DIR/"
 
       - name: Upload artifact for download
@@ -45,6 +43,14 @@ jobs:
         with:
           name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
           path: out/magisk_module_release_named/${{ github.event.inputs.package_name }}/
+
+      - name: Create tag for release
+        run: |
+          TAG_NAME="build-${{ github.run_id }}"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
