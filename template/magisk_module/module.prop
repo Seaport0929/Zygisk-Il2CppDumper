@@ -1,6 +1,6 @@
-id=Perfare/Zygisk-Il2CppDumper
-name=Zygisk-Il2CppDumper
-version=1.0.0
-versionCode=17
-author=Seaport0929
-description=forked from Perfare/Zygisk-Il2CppDumper
+id=${id}
+name=${name}
+version=${version}
+versionCode=${versionCode}
+author=${author}
+description=${description}
